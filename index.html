@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Hooky Creative Agency</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            maroon: { DEFAULT: '#800000', dark: '#5a0000', light: '#990000' },
+            coral: { DEFAULT: '#FF7F50', light: '#FF9E79' },
+            amber: { DEFAULT: '#F59E0B', light: '#FEF3C7' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [username, setUsername] = useState('admin');
+      const [password, setPassword] = useState('hooky123');
+      const [loginError, setLoginError] = useState('');
+
+      const [activeTab, setActiveTab] = useState('home');
+      const [scheduleView, setScheduleView] = useState('list');
+      const [data, setData] = useState({ users: [], schedules: [], drafts: [], references: [] });
+      const [loading, setLoading] = useState(false);
+      const [saving, setSaving] = useState(false);
+
+      // Filters
+      const [platformFilter, setPlatformFilter] = useState('All');
+
+      // Modals
+      const [showModal, setShowModal] = useState(false);
+      const [modalType, setModalType] = useState('schedule');
+      const [editingItem, setEditingItem] = useState(null);
+      const [formData, setFormData] = useState({});
+      const [showSuccessModal, setShowSuccessModal] = useState(false);
+      const [showPostUrlModal, setShowPostUrlModal] = useState(null);
+      const [postUrlInput, setPostUrlInput] = useState('');
+      const [previewMediaModal, setPreviewMediaModal] = useState(null);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      useEffect(() => {
+        loadData();
+      }, []);
+
+      const loadData = () => {
+        setLoading(true);
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.withSuccessHandler((res) => {
+            setData(res || { users: [], schedules: [], drafts: [], references: [] });
+            setLoading(false);
+          }).getAppData();
+        } else {
+          const local = localStorage.getItem('hooky_full_data_v2');
+          if (local) {
+            setData(JSON.parse(local));
+          } else {
+            const dummy = {
+              users: [{ username: 'admin', password: 'hooky123', name: 'Admin Hooky' }],
+              schedules: [
+                { id: 'sch_1', title: 'Tips Financial Client 2026', platform: 'Instagram', category: 'Edukasi', date: todayStr, time: '18:00', pic: 'Budi', status: 'Belum Diupload', thumbnail: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=300', postUrl: '' }
+              ],
+              drafts: [
+                { id: 'drf_1', title: 'Ide Campaign Klien A', concept: 'Review produk baru', hook: 'Bisa dapet 10jt pertama?', caption: 'Detail...', hashtag: '#hookycreative', platform: 'Instagram', deadline: todayStr, status: 'Scripting', mediaType: 'image', mediaUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600' }
+              ],
+              references: [
+                { id: 'ref_1', title: 'Transisi Video Aesthetic', link: 'https://instagram.com/p/1', thumbnail: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=300', platform: 'Instagram', tag: 'Editing', whyInteresting: 'Hook mulus', isFavorite: true }
+              ]
+            };
+            setData(dummy);
+            localStorage.setItem('hooky_full_data_v2', JSON.stringify(dummy));
+          }
+          setLoading(false);
+        }
+      };
+
+      const handleSave = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        setSaving(true);
+        const targetSheet = modalType === 'schedule' ? 'schedules' : (modalType === 'draft' ? 'drafts' : 'references');
+        
+        const payload = { ...formData };
+        if (!payload.status) {
+          if (modalType === 'schedule') payload.status = 'Belum Diupload';
+          if (modalType === 'draft') payload.status = 'Ide';
+        }
+
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.withSuccessHandler((res) => {
+            setData(res);
+            setSaving(false);
+            setShowModal(false);
+          }).saveItem(targetSheet, payload);
+        } else {
+          const updated = { ...data };
+          if (!payload.id) payload.id = targetSheet.substring(0, 3) + '_' + Date.now();
+          const idx = updated[targetSheet].findIndex(x => x.id === payload.id);
+          if (idx >= 0) updated[targetSheet][idx] = payload;
+          else updated[targetSheet].push(payload);
+
+          setData(updated);
+          localStorage.setItem('hooky_full_data_v2', JSON.stringify(updated));
+          setSaving(false);
+          setShowModal(false);
+        }
+      };
+
+      const handleDelete = (sheetName, id) => {
+        if (!confirm("Yakin ingin menghapus item ini?")) return;
+        setLoading(true);
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.withSuccessHandler((res) => {
+            setData(res);
+            setLoading(false);
+          }).deleteItem(sheetName, id);
+        } else {
+          const updated = { ...data };
+          updated[sheetName] = updated[sheetName].filter(x => x.id !== id);
+          setData(updated);
+          localStorage.setItem('hooky_full_data_v2', JSON.stringify(updated));
+          setLoading(false);
+        }
+      };
+
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        const isVideo = file.type.startsWith('video/');
+        reader.onloadend = () => {
+          setFormData(prev => ({
+            ...prev,
+            mediaUrl: reader.result,
+            mediaType: isVideo ? 'video' : 'image',
+            thumbnail: isVideo ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=300' : reader.result
+          }));
+        };
+        reader.readAsDataURL(file);
+      };
+
+      const handleQuickStatusToggle = (schedule) => {
+        if (schedule.status !== 'Sudah Diupload') {
+          setShowPostUrlModal(schedule);
+          setPostUrlInput(schedule.postUrl || '');
+        } else {
+          const updated = { ...schedule, status: 'Belum Diupload' };
+          saveScheduleDirect(updated);
+        }
+      };
+
+      const confirmMarkAsUploaded = () => {
+        if (!showPostUrlModal) return;
+        const updated = { ...showPostUrlModal, status: 'Sudah Diupload', postUrl: postUrlInput };
+        saveScheduleDirect(updated);
+        setShowPostUrlModal(null);
+        setShowSuccessModal(true);
+      };
+
+      const saveScheduleDirect = (item) => {
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run.withSuccessHandler(res => setData(res)).saveItem('schedules', item);
+        } else {
+          const updatedData = { ...data };
+          const idx = updatedData.schedules.findIndex(x => x.id === item.id);
+          if (idx >= 0) updatedData.schedules[idx] = item;
+          setData(updatedData);
+          localStorage.setItem('hooky_full_data_v2', JSON.stringify(updatedData));
+        }
+      };
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        if (username === 'admin' && password === 'hooky123') {
+          setIsLoggedIn(true);
+          setLoginError('');
+        } else {
+          setLoginError('Username atau password salah!');
+        }
+      };
+
+      const openAddModal = (type = 'schedule') => {
+        setModalType(type);
+        setEditingItem(null);
+        setFormData({
+          platform: 'Instagram',
+          category: 'Edukasi',
+          status: type === 'schedule' ? 'Belum Diupload' : 'Ide',
+          date: todayStr,
+          time: '18:00',
+          pic: 'Admin Hooky'
+        });
+        setShowModal(true);
+      };
+
+      const openEditModal = (type, item) => {
+        setModalType(type);
+        setEditingItem(item);
+        setFormData({ ...item });
+        setShowModal(true);
+      };
+
+      const schedules = data.schedules || [];
+      const uploadedToday = schedules.filter(s => s.date === todayStr && s.status === 'Sudah Diupload').length;
+      const pendingToday = schedules.filter(s => s.date === todayStr && s.status !== 'Sudah Diupload').length;
+
+      const filteredSchedules = schedules.filter(s => {
+        return platformFilter === 'All' || s.platform === platformFilter;
+      });
+
+      const renderBadge = (status, date) => {
+        if (status === 'Sudah Diupload') {
+          return <span class="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1"><i class="fa-solid fa-circle-check"></i> Sudah Diupload</span>;
+        }
+        if (date < todayStr && status !== 'Sudah Diupload') {
+          return <span class="bg-red-900 text-white text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation"></i> Terlambat</span>;
+        }
+        return <span class="bg-coral text-white text-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1"><i class="fa-solid fa-clock"></i> Belum Diupload</span>;
+      };
+
+      const platformDotColor = (platform) => {
+        if (platform === 'Instagram') return 'bg-pink-500';
+        if (platform === 'TikTok') return 'bg-slate-900';
+        if (platform === 'YouTube') return 'bg-red-600';
+        return 'bg-blue-500';
+      };
+
+      if (!isLoggedIn) {
+        return (
+          <div class="min-h-screen bg-maroon flex items-center justify-center p-6">
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md space-y-6">
+              <div class="text-center space-y-2">
+                <div class="w-16 h-16 bg-maroon text-white rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold shadow-lg">
+                  <i class="fa-solid fa-clapperboard"></i>
+                </div>
+                <h1 class="text-2xl font-black text-slate-900">Hooky Creative</h1>
+                <p class="text-xs text-slate-500">Agency Content Management System</p>
+              </div>
+
+              {loginError && <div class="bg-red-50 text-red-600 text-xs p-3 rounded-xl border border-red-200">{loginError}</div>}
+
+              <form onSubmit={handleLogin} class="space-y-4">
+                <div>
+                  <label class="text-xs font-bold text-slate-700 uppercase block mb-1">Username</label>
+                  <input type="text" value={username} onChange={e => setUsername(e.target.value)} class="w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-maroon" required />
+                </div>
+                <div>
+                  <label class="text-xs font-bold text-slate-700 uppercase block mb-1">Password</label>
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} class="w-full px-4 py-2.5 bg-slate-50 border rounded-xl text-sm focus:ring-2 focus:ring-maroon" required />
+                </div>
+                <button type="submit" class="w-full bg-maroon text-white font-bold py-3 rounded-xl shadow-lg hover:bg-maroon-dark transition text-sm">
+                  Masuk Dashboard
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div class="flex h-screen overflow-hidden">
+          {/* Sidebar */}
+          <aside class="w-64 bg-slate-900 text-white flex flex-col justify-between p-4 flex-shrink-0">
+            <div class="space-y-8">
+              <div class="flex items-center space-x-3 px-2">
+                <div class="w-10 h-10 bg-maroon rounded-xl flex items-center justify-center font-bold text-lg shadow-md">
+                  <i class="fa-solid fa-clapperboard"></i>
+                </div>
+                <div>
+                  <h1 class="font-bold text-sm leading-none">HOOKY CREATIVE</h1>
+                  <span class="text-[10px] text-slate-400">Workspace Dashboard</span>
+                </div>
+              </div>
+
+              <nav class="space-y-1">
+                <button onClick={() => setActiveTab('home')} class={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-xs transition ${activeTab === 'home' ? 'bg-maroon text-white font-bold shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <i class="fa-solid fa-house w-5"></i>
+                  <span>Home</span>
+                </button>
+                <button onClick={() => setActiveTab('schedule')} class={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-xs transition ${activeTab === 'schedule' ? 'bg-maroon text-white font-bold shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <i class="fa-solid fa-calendar-days w-5"></i>
+                  <span>Jadwal Upload</span>
+                </button>
+                <button onClick={() => setActiveTab('drafts')} class={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-xs transition ${activeTab === 'drafts' ? 'bg-maroon text-white font-bold shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <i class="fa-solid fa-file-pen w-5"></i>
+                  <span>Draft Konten</span>
+                </button>
+                <button onClick={() => setActiveTab('references')} class={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-xs transition ${activeTab === 'references' ? 'bg-maroon text-white font-bold shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <i class="fa-solid fa-bookmark w-5"></i>
+                  <span>Referensi</span>
+                </button>
+                <button onClick={() => setActiveTab('insight')} class={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-xs transition ${activeTab === 'insight' ? 'bg-maroon text-white font-bold shadow-md' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <i class="fa-solid fa-chart-pie w-5"></i>
+                  <span>Insight Bulanan</span>
+                </button>
+              </nav>
+            </div>
+
+            <div class="space-y-4">
+              <button onClick={() => openAddModal('schedule')} class="w-full bg-maroon hover:bg-maroon-dark text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-lg transition">
+                <i class="fa-solid fa-plus"></i>
+                <span>Tambah Jadwal Baru</span>
+              </button>
+
+              <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" class="w-8 h-8 rounded-full border border-maroon" />
+                  <div class="leading-tight">
+                    <p class="text-xs font-bold text-white">Admin Hooky</p>
+                    <p class="text-[10px] text-slate-400">Content Manager</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsLoggedIn(false)} class="text-slate-400 hover:text-red-400 text-xs"><i class="fa-solid fa-right-from-bracket"></i></button>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Workspace */}
+          <main class="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50">
+            <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+              <div class="flex items-center space-x-3">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" class="w-10 h-10 rounded-full border-2 border-maroon" />
+                <div>
+                  <h2 class="text-sm font-bold text-slate-800">Halo, Admin Hooky 👋</h2>
+                  <p class="text-xs text-slate-500">Hooky Creative Agency Workspace</p>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-3">
+                <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border">
+                  <i class="fa-regular fa-calendar mr-1"></i> {todayStr}
+                </span>
+                <button onClick={() => openAddModal('schedule')} class="bg-maroon hover:bg-maroon-dark text-white text-xs font-bold px-4 py-2 rounded-xl shadow transition">
+                  + Buat Baru
+                </button>
+              </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* HOME OVERVIEW */}
+              {activeTab === 'home' && (
+                <div class="space-y-6">
+                  <div class="bg-maroon text-white p-6 rounded-2xl shadow-lg flex justify-between items-center">
+                    <div>
+                      <span class="text-xs font-semibold uppercase text-red-200">Ringkasan Hari Ini</span>
+                      <h3 class="text-xl font-black mt-1">{uploadedToday} sudah upload, {pendingToday} belum upload hari ini</h3>
+                      <p class="text-xs text-red-100 mt-1">Pantau ketercapaian target posting mingguan tim Anda.</p>
+                    </div>
+                    <button onClick={() => setActiveTab('schedule')} class="bg-white text-maroon font-bold text-xs px-4 py-2 rounded-xl shadow">Lihat Jadwal</button>
+                  </div>
+
+                  <div class="flex space-x-2 overflow-x-auto pb-1">
+                    {['All', 'Instagram', 'TikTok', 'YouTube'].map(p => (
+                      <button key={p} onClick={() => setPlatformFilter(p)} class={`px-4 py-1.5 rounded-full text-xs font-bold transition ${platformFilter === p ? 'bg-maroon text-white shadow' : 'bg-white text-slate-600 border'}`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div class="bg-white p-5 rounded-2xl border space-y-4">
+                    <h3 class="font-bold text-sm text-slate-800">Jadwal Upload Terdekat</h3>
+                    <div class="space-y-3">
+                      {filteredSchedules.slice(0, 5).map(item => (
+                        <div key={item.id} class="p-3 bg-slate-50 border rounded-xl flex items-center justify-between">
+                          <div class="flex items-center space-x-3">
+                            <img src={item.thumbnail || 'https://via.placeholder.com/80'} class="w-12 h-12 rounded-lg object-cover" />
+                            <div>
+                              <div class="flex items-center space-x-2">
+                                <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold">{item.platform}</span>
+                                <span class="text-[10px] text-slate-500">{item.category}</span>
+                              </div>
+                              <h4 class="font-bold text-xs text-slate-900 mt-0.5">{item.title}</h4>
+                              <p class="text-[10px] text-slate-500">PIC: {item.pic} | {item.date} Pukul {item.time}</p>
+                            </div>
+                          </div>
+
+                          <div class="flex items-center space-x-3">
+                            {renderBadge(item.status, item.date)}
+                            <button onClick={() => handleQuickStatusToggle(item)} class="text-xs font-bold text-maroon hover:underline">
+                              Toggle Status
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* JADWAL UPLOAD TAB */}
+              {activeTab === 'schedule' && (
+                <div class="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
+                  <div class="flex justify-between items-center border-b pb-4">
+                    <div class="flex space-x-2">
+                      <button onClick={() => setScheduleView('list')} class={`px-3 py-1.5 text-xs font-bold rounded-lg border ${scheduleView === 'list' ? 'bg-maroon text-white' : 'bg-slate-100 text-slate-600'}`}>Daftar Mingguan</button>
+                      <button onClick={() => setScheduleView('calendar')} class={`px-3 py-1.5 text-xs font-bold rounded-lg border ${scheduleView === 'calendar' ? 'bg-maroon text-white' : 'bg-slate-100 text-slate-600'}`}>Kalender Bulanan</button>
+                    </div>
+
+                    <div class="flex space-x-2">
+                      {['All', 'Instagram', 'TikTok', 'YouTube'].map(p => (
+                        <button key={p} onClick={() => setPlatformFilter(p)} class={`px-3 py-1 text-xs font-bold rounded-lg ${platformFilter === p ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>{p}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {scheduleView === 'calendar' ? (
+                    <div class="space-y-4">
+                      <h4 class="text-xs font-bold text-slate-500 uppercase">Tampilan Kalender Bulanan</h4>
+                      <div class="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-600 mb-2">
+                        <div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div><div>Ming</div>
+                      </div>
+                      <div class="grid grid-cols-7 gap-2">
+                        {Array.from({ length: 31 }, (_, i) => {
+                          const dayNum = i + 1;
+                          const currentDayStr = `${todayStr.substring(0, 8)}${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                          const daySchedules = schedules.filter(s => s.date === currentDayStr);
+                          return (
+                            <div key={i} class="h-24 bg-slate-50 border rounded-xl p-1.5 flex flex-col justify-between">
+                              <span class="text-xs font-bold text-slate-700">{dayNum}</span>
+                              <div class="flex flex-wrap gap-1">
+                                {daySchedules.map(s => (
+                                  <span key={s.id} class={`w-2.5 h-2.5 rounded-full ${platformDotColor(s.platform)}`} title={`${s.title} (${s.platform})`}></span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div class="space-y-3">
+                      {filteredSchedules.map(item => (
+                        <div key={item.id} class="bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between">
+                          <div class="flex items-center space-x-4">
+                            <img src={item.thumbnail || 'https://via.placeholder.com/80'} class="w-14 h-14 rounded-lg object-cover" />
+                            <div>
+                              <span class="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded">{item.platform}</span>
+                              <h4 class="font-bold text-xs text-slate-900 mt-1">{item.title}</h4>
+                              <p class="text-[10px] text-slate-500">PIC: {item.pic} | {item.date} Pukul {item.time}</p>
+                              {item.postUrl && (
+                                <a href={item.postUrl} target="_blank" class="text-[10px] text-blue-600 font-bold hover:underline block mt-1"><i class="fa-solid fa-link"></i> Link Postingan</a>
+                              )}
+                            </div>
+                          </div>
+
+                          <div class="flex items-center space-x-3">
+                            {renderBadge(item.status, item.date)}
+                            <button onClick={() => handleQuickStatusToggle(item)} class="text-xs font-bold text-maroon hover:underline">Toggle Status</button>
+                            <button onClick={() => openEditModal('schedule', item)} class="text-slate-400 hover:text-slate-700 text-xs"><i class="fa-solid fa-pen"></i></button>
+                            <button onClick={() => handleDelete('schedules', item.id)} class="text-red-400 hover:text-red-600 text-xs"><i class="fa-solid fa-trash"></i></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* DRAFT KONTEN KANBAN BOARD DENGAN MEDIA PRATINJAU */}
+              {activeTab === 'drafts' && (
+                <div class="space-y-4">
+                  <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800 text-sm">Kanban Board Draft & Produksi</h3>
+                    <button onClick={() => openAddModal('draft')} class="bg-maroon text-white font-bold text-xs px-4 py-2 rounded-xl">+ Draft Baru</button>
+                  </div>
+
+                  <div class="grid grid-cols-5 gap-3">
+                    {['Ide', 'Scripting', 'Shooting', 'Editing', 'Siap Upload'].map(statusName => (
+                      <div key={statusName} class="bg-slate-200/60 p-3 rounded-2xl space-y-3">
+                        <div class="flex justify-between items-center">
+                          <h4 class="font-bold text-xs text-slate-700">{statusName}</h4>
+                          <span class="bg-slate-300 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            {data.drafts.filter(d => d.status === statusName).length}
+                          </span>
+                        </div>
+
+                        <div class="space-y-3">
+                          {data.drafts.filter(d => d.status === statusName).map(draft => (
+                            <div key={draft.id} class="bg-white p-3 rounded-xl border shadow-sm space-y-2">
+                              {/* Media Thumbnail in Draft Card */}
+                              {draft.mediaUrl && (
+                                <div class="relative h-28 rounded-lg overflow-hidden bg-slate-100 cursor-pointer" onClick={() => setPreviewMediaModal({ url: draft.mediaUrl, type: draft.mediaType, title: draft.title })}>
+                                  {draft.mediaType === 'video' ? (
+                                    <video src={draft.mediaUrl} class="w-full h-full object-cover" />
+                                  ) : (
+                                    <img src={draft.mediaUrl} class="w-full h-full object-cover" />
+                                  )}
+                                  <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded"><i class="fa-solid fa-eye"></i> Lihat Media</span>
+                                </div>
+                              )}
+
+                              <div class="flex justify-between items-start">
+                                <span class="text-[9px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded">{draft.platform}</span>
+                                <button onClick={() => handleDelete('drafts', draft.id)} class="text-slate-400 text-xs"><i class="fa-solid fa-trash"></i></button>
+                              </div>
+                              <h5 class="font-bold text-xs text-slate-900">{draft.title}</h5>
+                              <p class="text-[10px] text-slate-500 line-clamp-2"><strong>Hook:</strong> {draft.hook}</p>
+                              
+                              <div class="pt-2 border-t flex justify-between items-center text-[10px]">
+                                <span class="text-slate-400">{draft.deadline}</span>
+                                <button onClick={() => {
+                                  const newSch = {
+                                    title: draft.title,
+                                    platform: draft.platform,
+                                    category: 'Draft Ide',
+                                    date: draft.deadline,
+                                    time: '18:00',
+                                    pic: 'Admin',
+                                    status: 'Belum Diupload',
+                                    thumbnail: draft.mediaUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=300',
+                                    mediaUrl: draft.mediaUrl || '',
+                                    mediaType: draft.mediaType || 'image'
+                                  };
+                                  handleSave(null, newSch);
+                                  handleDelete('drafts', draft.id);
+                                  alert("Draft berhasil dijadwalkan ke Jadwal Upload!");
+                                }} class="bg-maroon text-white font-bold px-2 py-1 rounded">Jadwalkan</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* REFERENSI KONTEN */}
+              {activeTab === 'references' && (
+                <div class="space-y-4">
+                  <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-slate-800 text-sm">Referensi Konten & Inspirasi</h3>
+                    <button onClick={() => openAddModal('reference')} class="bg-maroon text-white font-bold text-xs px-4 py-2 rounded-xl">+ Referensi Baru</button>
+                  </div>
+
+                  <div class="grid grid-cols-4 gap-4">
+                    {data.references.map(ref => (
+                      <div key={ref.id} class="bg-white rounded-2xl border overflow-hidden shadow-sm flex flex-col justify-between">
+                        <img src={ref.thumbnail} class="h-32 w-full object-cover" />
+                        <div class="p-3 space-y-1">
+                          <span class="text-[9px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded">{ref.platform}</span>
+                          <h4 class="font-bold text-xs text-slate-900 line-clamp-1">{ref.title}</h4>
+                          <p class="text-[10px] text-slate-500 line-clamp-2">{ref.whyInteresting}</p>
+                        </div>
+                        <div class="p-3 border-t flex justify-between items-center">
+                          <a href={ref.link} target="_blank" class="text-blue-600 font-bold text-xs">Link</a>
+                          <button onClick={() => handleDelete('references', ref.id)} class="text-red-400 text-xs"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* INSIGHT BULANAN */}
+              {activeTab === 'insight' && (
+                <div class="space-y-6">
+                  <h3 class="font-bold text-slate-800 text-sm">Dashboard Insight Bulanan</h3>
+                  <div class="grid grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-2xl border shadow-sm space-y-3">
+                      <span class="text-xs text-slate-400">Target Bulanan (20 Konten)</span>
+                      <h4 class="text-2xl font-black text-maroon">{schedules.length} / 20</h4>
+                      <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div class="bg-maroon h-full" style={{ width: `${Math.min((schedules.length / 20) * 100, 100)}%` }}></div>
+                      </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border shadow-sm text-center">
+                      <span class="text-xs text-slate-400">Total Views</span>
+                      <h4 class="text-2xl font-black text-slate-800">
+                        {schedules.reduce((acc, c) => acc + (parseInt(c.views) || 0), 0).toLocaleString()}
+                      </h4>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl border shadow-sm text-center">
+                      <span class="text-xs text-slate-400">Total Likes</span>
+                      <h4 class="text-2xl font-black text-slate-800">
+                        {schedules.reduce((acc, c) => acc + (parseInt(c.likes) || 0), 0).toLocaleString()}
+                      </h4>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* MODAL LINK POSTINGAN */}
+          {showPostUrlModal && (
+            <div class="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+              <div class="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <h4 class="font-bold text-sm text-slate-800">Tandai Konten "Sudah Diupload"</h4>
+                <div>
+                  <label class="text-xs font-bold text-slate-600 block mb-1">Masukkan Link Postingan</label>
+                  <input type="url" value={postUrlInput} onChange={e => setPostUrlInput(e.target.value)} class="w-full text-xs p-2.5 border rounded-xl" placeholder="https://instagram.com/p/..." />
+                </div>
+                <div class="flex space-x-2">
+                  <button onClick={() => setShowPostUrlModal(null)} class="flex-1 py-2 border rounded-xl text-xs font-bold">Batal</button>
+                  <button onClick={confirmMarkAsUploaded} class="flex-1 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">Tandai Upload</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* LAYAR SUKSES ANIMASI */}
+          {showSuccessModal && (
+            <div class="fixed inset-0 bg-slate-900/70 flex items-center justify-center p-4 z-50">
+              <div class="bg-white rounded-2xl p-6 w-full max-w-xs text-center space-y-3 animate-bounce">
+                <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <h4 class="font-bold text-slate-800 text-sm">Status Berhasil Diperbarui!</h4>
+                <p class="text-xs text-slate-500">Konten telah ditandai sebagai "Sudah Diupload".</p>
+                <button onClick={() => setShowSuccessModal(false)} class="w-full bg-maroon text-white text-xs py-2 rounded-xl font-bold">Tutup</button>
+              </div>
+            </div>
+          )}
+
+          {/* PREVIEW MEDIA MODAL */}
+          {previewMediaModal && (
+            <div class="fixed inset-0 bg-slate-900/80 flex items-center justify-center p-6 z-50">
+              <div class="bg-white rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl flex flex-col">
+                <div class="p-4 bg-slate-900 text-white flex justify-between items-center">
+                  <h4 class="font-bold text-xs">{previewMediaModal.title}</h4>
+                  <button onClick={() => setPreviewMediaModal(null)}><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-4 bg-black flex items-center justify-center min-h-[300px]">
+                  {previewMediaModal.type === 'video' ? (
+                    <video src={previewMediaModal.url} controls autoPlay class="max-h-[60vh] max-w-full rounded" />
+                  ) : (
+                    <img src={previewMediaModal.url} class="max-h-[60vh] max-w-full object-contain rounded" />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* FORM INPUT MODAL (DENGAN UPLOAD FOTO/VIDEO UNTUK DRAFT) */}
+          {showModal && (
+            <div class="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+              <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden space-y-4">
+                <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                  <h3 class="font-bold text-sm">Form Data - <span class="capitalize">{modalType}</span></h3>
+                  <button onClick={() => setShowModal(false)}><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <form onSubmit={handleSave} class="p-6 pt-0 space-y-4 max-h-[75vh] overflow-y-auto">
+                  <div>
+                    <label class="text-xs font-bold block mb-1">Judul *</label>
+                    <input type="text" value={formData.title || ''} onChange={e => setFormData({ ...formData, title: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs" required />
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <label class="text-xs font-bold block mb-1">Platform</label>
+                      <select value={formData.platform || 'Instagram'} onChange={e => setFormData({ ...formData, platform: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs">
+                        <option value="Instagram">Instagram</option>
+                        <option value="TikTok">TikTok</option>
+                        <option value="YouTube">YouTube</option>
+                      </select>
+                    </div>
+
+                    {modalType === 'draft' ? (
+                      <div>
+                        <label class="text-xs font-bold block mb-1">Status Draft</label>
+                        <select value={formData.status || 'Ide'} onChange={e => setFormData({ ...formData, status: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs font-bold">
+                          <option value="Ide">Ide</option>
+                          <option value="Scripting">Scripting</option>
+                          <option value="Shooting">Shooting</option>
+                          <option value="Editing">Editing</option>
+                          <option value="Siap Upload">Siap Upload</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label class="text-xs font-bold block mb-1">Status</label>
+                        <select value={formData.status || 'Belum Diupload'} onChange={e => setFormData({ ...formData, status: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs font-bold">
+                          <option value="Belum Diupload">Belum Diupload</option>
+                          <option value="Sudah Diupload">Sudah Diupload</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {modalType === 'draft' && (
+                    <>
+                      <div>
+                        <label class="text-xs font-bold block mb-1">Hook / 3 Detik Pertama</label>
+                        <input type="text" value={formData.hook || ''} onChange={e => setFormData({ ...formData, hook: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs" placeholder="Contoh: Bisa dapet 10jt pertama..." />
+                      </div>
+                      <div>
+                        <label class="text-xs font-bold block mb-1">Deadline Produksi</label>
+                        <input type="date" value={formData.deadline || todayStr} onChange={e => setFormData({ ...formData, deadline: e.target.value })} class="w-full px-3 py-2 border rounded-xl text-xs" />
+                      </div>
+                    </>
+                  )}
+
+                  {/* UPLOAD FOTO ATAU VIDEO DI DRAF/JADWAL */}
+                  <div class="p-3 bg-slate-50 border border-dashed rounded-xl space-y-2">
+                    <label class="text-xs font-bold block">Lampirkan File Foto / Video Draft</label>
+                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} class="w-full text-xs" />
+                    {formData.mediaUrl && (
+                      <div class="mt-2 text-[10px] text-emerald-600 font-bold flex items-center space-x-1">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>File media siap disimpan!</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div class="pt-4 border-t flex space-x-3">
+                    <button type="button" onClick={() => setShowModal(false)} class="flex-1 py-2 border rounded-xl text-xs font-bold">Batal</button>
+                    <button type="submit" disabled={saving} class="flex-1 py-2 bg-maroon text-white rounded-xl text-xs font-bold">
+                      {saving ? 'Menyimpan...' : 'Simpan Data'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
